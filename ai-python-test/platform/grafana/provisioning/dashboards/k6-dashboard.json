@@ -1,0 +1,480 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 7,
+      "title": "DISPONIBILIDAD GLOBAL",
+      "type": "gauge",
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "query": "SELECT (count(\"value\") - sum(\"value\")) / count(\"value\") * 100 FROM \"http_req_failed\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "id": 8,
+      "title": "TRÁFICO POR ENDPOINT (OK vs FALLOS)",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "alias": "OK: $tag_url",
+          "query": "SELECT count(\"value\") FROM \"http_req_failed\" WHERE \"value\" = 0 AND $timeFilter GROUP BY time(5s), \"url\"",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "FALLO: $tag_url",
+          "query": "SELECT count(\"value\") FROM \"http_req_failed\" WHERE \"value\" = 1 AND $timeFilter GROUP BY time(5s), \"url\"",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
+      "id": 1,
+      "title": "1. RESPUESTA DE INTERFAZ",
+      "type": "stat",
+      "options": {
+        "colorMode": "background",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ]
+        },
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 0,
+                "to": 400,
+                "result": {
+                  "text": "RÁPIDA",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 401,
+                "to": 1000000,
+                "result": {
+                  "text": "LENTA",
+                  "color": "red"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "query": "SELECT mean(\"value\") FROM \"http_req_duration\" WHERE \"url\" =~ /process/ AND $timeFilter",
+          "rawQuery": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 18,
+        "x": 6,
+        "y": 8
+      },
+      "id": 2,
+      "title": "2. RENDIMIENTO: RPS vs LATENCIA",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "alias": "RPS (Throughput)",
+          "query": "SELECT count(\"value\") / 5 FROM \"http_reqs\" WHERE $timeFilter GROUP BY time(5s)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Latencia Proceso (ms)",
+          "query": "SELECT mean(\"value\") FROM \"http_req_duration\" WHERE \"url\" =~ /process/ AND $timeFilter GROUP BY time(5s)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 15
+      },
+      "id": 3,
+      "title": "ESTADO RESILIENCIA",
+      "type": "stat",
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 99,
+                "to": 100,
+                "result": {
+                  "text": "ALTA",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 0,
+                "to": 98,
+                "result": {
+                  "text": "BAJA",
+                  "color": "red"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "query": "SELECT (count(\"value\") - sum(\"value\")) / count(\"value\") * 100 FROM \"http_req_failed\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 18,
+        "x": 6,
+        "y": 15
+      },
+      "id": 4,
+      "title": "4. ESTABILIDAD: PERCENTILES (p95/p99)",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right"
+        }
+      },
+      "targets": [
+        {
+          "alias": "p95",
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"url\" =~ /process/ AND $timeFilter GROUP BY time(5s)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "p99",
+          "query": "SELECT percentile(\"value\", 99) FROM \"http_req_duration\" WHERE \"url\" =~ /process/ AND $timeFilter GROUP BY time(5s)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 22
+      },
+      "id": 5,
+      "title": "CONCURRENCIA MÁXIMA (VUs)",
+      "type": "stat",
+      "options": {
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "query": "SELECT max(\"value\") FROM \"vus\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 18,
+        "x": 6,
+        "y": 22
+      },
+      "id": 6,
+      "title": "5. DELTA DE ORQUESTACIÓN: IA vs NOTIFY",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right"
+        }
+      },
+      "targets": [
+        {
+          "alias": "Latencia Total App",
+          "query": "SELECT mean(\"value\") FROM \"http_req_duration\" WHERE \"url\" =~ /process/ AND $timeFilter GROUP BY time(5s)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Overhead Externo (AI/Provider)",
+          "query": "SELECT mean(\"value\") FROM \"http_req_duration\" WHERE \"url\" !~ /process/ AND $timeFilter GROUP BY time(5s)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 29
+      },
+      "id": 99,
+      "title": "RATIO INTENTOS/REQ",
+      "type": "stat",
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1.5
+              },
+              {
+                "color": "red",
+                "value": 2.5
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": "InfluxDB",
+          "hide": true,
+          "query": "SELECT sum(\"value\") AS \"val\" FROM \"provider_hits\" WHERE \"endpoint\" = 'extract' AND $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "table"
+        },
+        {
+          "datasource": "InfluxDB",
+          "hide": true,
+          "query": "SELECT count(\"value\") AS \"val\" FROM \"http_reqs\" WHERE \"url\" =~ /process/ AND $timeFilter",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "table"
+        },
+        {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A / $B",
+          "hide": false,
+          "refId": "C",
+          "type": "math"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "A": true,
+              "B": true,
+              "val": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "C": "Ratio Intentos"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 7,
+        "w": 18,
+        "x": 6,
+        "y": 29
+      },
+      "id": 7,
+      "title": "6. ROBUSTEZ IA: INTENTOS DE INFERENCIA vs SOLICITUDES",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["sum"]
+        }
+      },
+      "targets": [
+        {
+          "alias": "Solicitudes (App)",
+          "query": "SELECT count(\"value\") FROM \"http_reqs\" WHERE \"url\" =~ /process/ AND $timeFilter GROUP BY time(10s)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Intentos IA (Provider)",
+          "query": "SELECT sum(\"value\") FROM \"provider_hits\" WHERE \"endpoint\" = 'extract' AND $timeFilter GROUP BY time(10s)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 36,
+  "style": "dark",
+  "title": "IA Engineer Scorecard | Technical Assessment",
+  "uid": "ia-performance-scorecard",
+  "version": 100
+}

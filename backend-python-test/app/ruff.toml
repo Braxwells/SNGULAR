@@ -1,0 +1,19 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM", "RUF", "ASYNC"]
+ignore = [
+    "E501",    # la longitud de linea la gestiona el formateador
+    "RUF001",  # los comentarios estan en castellano: acentos y signos de apertura
+    "RUF002",
+    "RUF003",
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[lint.flake8-bugbear]
+# `Depends(...)` como valor por defecto es EL idiom de inyeccion de FastAPI: la llamada la
+# resuelve el framework en cada peticion, no se comparte estado mutable entre ellas.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]

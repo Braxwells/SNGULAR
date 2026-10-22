@@ -1,0 +1,97 @@
+services:
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: backend-app
+    # Comparte el network namespace del provider: la app escucha en el puerto 5000 que
+    # publica el servicio `provider`, y alcanza al provider en http://localhost:3001.
+    network_mode: "service:provider"
+    depends_on:
+      - provider
+    restart: unless-stopped
+    environment:
+      # Todos tienen default en el codigo; se listan aqui para que la configuracion efectiva
+      # sea visible y ajustable sin reconstruir la imagen.
+      - NOTIFIER_PROVIDER_URL=http://localhost:3001
+      - NOTIFIER_PROVIDER_API_KEY=test-dev-2026
+      - NOTIFIER_WORKERS=16
+      - NOTIFIER_PROVIDER_CONCURRENCY=16
+      # El provider acepta 50 peticiones por ventana deslizante de 10s; pedimos 45 para
+      # dejar margen y no provocar sus 429.
+      - NOTIFIER_RATE_LIMIT_MAX=45
+      - NOTIFIER_RATE_LIMIT_WINDOW=10
+      - NOTIFIER_RETRY_MAX_ATTEMPTS=4
+      - NOTIFIER_QUEUE_MAX_SIZE=100000
+      - NOTIFIER_LOG_LEVEL=INFO
+    # Sin este healthcheck, k6 podia empezar a disparar antes de que la app estuviera
+    # escuchando: esas primeras peticiones fallidas hundian la metrica de disponibilidad.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  provider:
+    build:
+      context: ./provider
+    container_name: backend-provider
+    ports:
+      - "3001:3001"
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:3001/docs\")'"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  load-test:
+    image: grafana/k6:latest
+    volumes:
+      - ./platform/k6:/scripts
+    entrypoint: ["k6", "run", "--out", "influxdb=http://influxdb:8086/k6", "/scripts/test.js"]
+    environment:
+      - TARGET_URL=http://provider:5000
+    depends_on:
+      provider:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  influxdb:
+    image: influxdb:1.8
+    container_name: backend-influxdb
+    volumes:
+      - ./platform/influxdb:/docker-entrypoint-initdb.d
+    environment:
+      - INFLUXDB_DB=k6
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: backend-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./platform/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - influxdb
+
+  provider-check:
+    image: grafana/k6:latest
+    container_name: backend-provider-check
+    volumes:
+      - ./platform/k6:/scripts
+    command: run /scripts/health-check.js
+    depends_on:
+      - provider

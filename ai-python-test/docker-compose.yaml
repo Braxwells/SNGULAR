@@ -1,0 +1,81 @@
+services:
+  app:
+    build: 
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: ia-app
+    network_mode: "service:provider"
+    depends_on:
+      - provider
+    # Sin este healthcheck, k6 podía empezar a disparar antes de que la app estuviera
+    # escuchando: esas primeras peticiones fallidas hundían la métrica de disponibilidad.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  provider:
+    build:
+      context: ./provider
+    container_name: ia-provider
+    ports:
+      - "3001:3001"
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3001/docs')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  load-test:
+    image: grafana/k6:latest
+    volumes:
+      - ./platform/k6:/scripts
+    entrypoint: ["k6", "run", "--out", "influxdb=http://influxdb:8086/k6", "/scripts/test.js"]
+    environment:
+      - TARGET_URL=http://provider:5000
+    depends_on:
+      app:
+        condition: service_healthy
+      provider:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  influxdb:
+    image: influxdb:1.8
+    container_name: ia-influxdb
+    volumes:
+      - ./platform/influxdb:/docker-entrypoint-initdb.d
+    environment:
+      - INFLUXDB_DB=k6
+    healthcheck:
+      test: ["CMD", "curl", "-sL", "-I", "localhost:8086/ping", "--fail"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ia-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./platform/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - influxdb
+
+  provider-check:
+    image: grafana/k6:latest
+    container_name: ia-provider-check
+    volumes:
+      - ./platform/k6:/scripts
+    command: run /scripts/health-check.js
+    depends_on:
+      - provider
